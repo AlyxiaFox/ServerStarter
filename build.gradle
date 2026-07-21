@@ -93,7 +93,7 @@ task packageDist(type: Copy) {
     // The filter above rewrites every line with the platform separator, so a dist packaged on
     // Windows shipped a CRLF startserver.sh that Linux refuses to execute. The .bat is left alone,
     // since Windows wants CRLF there.
-    filesMatching('**/*.sh') {
+    filesMatching(['**/*.sh', '**/*.yaml']) {
         filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance('lf'))
     }
 }
