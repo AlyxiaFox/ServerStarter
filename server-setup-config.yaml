@@ -1,7 +1,7 @@
 # Version of the specs, only for internal usage if this format should ever change drastically
 _specver: 2
 
-# modpack related settings, changes the supposed to change the visual appearance of the launcher
+# modpack related settings, changes the visual appearance of the launcher
 modpack:
   # Name of the mod pack, that is displayed in various places where it fits
   name: Example Modpack
@@ -13,82 +13,75 @@ modpack:
 
 # settings regarding the installation of the modpack
 install:
-  # Curse Forge requires an API Token to access the API and to allow for downloading files.
-  # This field supports using an Environment Variable like ${CURSE_FORGE_API_KEY} to decrease the risk of sharing the API-Key by mistake
-  # To Modpack authors: You can enter your own API-Key here, but do that on your own risk.
-  curseForgeApiKey: "${CURSE_FORGE_API_KEY}"
+  # Only needed for the 'curse' and 'curseid' formats, which are currently broken (see modpackFormat).
+  # This field supports using an Environment Variable like ${CURSE_FORGE_API_KEY} so the key does not
+  # have to be committed. An unset variable resolves to an empty string and logs a warning.
+  curseForgeApiKey: ""
 
   # version of minecraft, needs the exact version
-  mcVersion: 1.17.1
+  mcVersion: "1.20.1"
 
   # exact version of forge or fabric that is supposed to be used
   # if this value is a null value so ( ~, null, or "" ) then the version from the mod pack is going to be used
-  loaderVersion: 37.0.95
+  loaderVersion: "47.4.1"
 
-  # If a custom installer is supposed to used, specify the url here: (Otherwise put "", ~ or null here)
+  # If a custom installer is supposed to be used, specify the url here: (Otherwise put "", ~ or null here)
   # supports variables: {{@loaderversion@}} and {{@mcversion@}}
-  # For forge: "https://files.minecraftforge.net/maven/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/forge-{{@mcversion@}}-{{@loaderversion@}}-installer.jar"
-  # For Fabric: "https://maven.fabricmc.net/net/fabricmc/fabric-installer/{{@loaderversion@}}/fabric-installer-{{@loaderversion@}}.jar"
-  installerUrl: "https://files.minecraftforge.net/maven/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/forge-{{@mcversion@}}-{{@loaderversion@}}-installer.jar"
+  # For Forge:  "https://maven.minecraftforge.net/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/forge-{{@mcversion@}}-{{@loaderversion@}}-installer.jar"
+  # For Fabric: "https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.jar"
+  installerUrl: "https://maven.minecraftforge.net/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/forge-{{@mcversion@}}-{{@loaderversion@}}-installer.jar"
 
   # Installer Arguments
-  # These Arguments have to be passed to the installer
+  # These Arguments have to be passed to the installer.
+  # Note: these are passed through verbatim, the {{@mcversion@}} style placeholders are NOT
+  # substituted here, so versions have to be written out in full.
   #
   # For Fabric:
   # installerArguments:
-  #   - "-downloadMinecraft"
   #   - "server"
+  #   - "-mcversion"
+  #   - "1.20.1"
+  #   - "-loader"
+  #   - "0.15.11"
+  #   - "-downloadMinecraft"
   #
   # For Forge:
-  # installerArguments:
-  #   - "--installServer"
   installerArguments:
     - "--installServer"
 
-  # Link to where the file where the modpack can be distributed
-  # This supports loading from local files as well for most pack types if there is file://{PathToFile} in the beginning
-  # Note: file://{PathToFile} does not need the full path, can be a relative path.
-  # E.g: modpackUrl: file://../modpacks/All+the+Mods+7-0.0.21.zip
-  modpackUrl: https://media.forgecdn.net/files/3491/186/All+the+Mods+7-0.0.21.zip
+  # Link to where the modpack can be downloaded. This has to be a direct link to the file,
+  # not a link to a download page.
+  # This supports loading from local files as well, with file://{PathToFile} in the beginning.
+  # Note: file://{PathToFile} does not need the full path, it can be a relative path.
+  # E.g: modpackUrl: file://../modpacks/MyPack-Server-1.0.0.zip
+  modpackUrl: "https://example.com/path/to/YourModpack-Server-1.0.0.zip"
 
-  # This is used to specify in which format the modpack is distributed, the server launcher has to handle each individually if their format differs
-  # current supported formats:
-  # - curseforge or curse
-  # - curseid
-  # - zip or zipfile
-  modpackFormat: curse
+  # This is used to specify in which format the modpack is distributed.
+  # Supported values:
+  # - zip or zipfile   -- a plain server pack archive. Use this one.
+  # - curseforge or curse, curseid
+  #     These talk to the CurseForge/CurseMeta APIs, which changed after this project was last
+  #     maintained upstream. They are left in place but do not currently work.
+  modpackFormat: zip
 
-  # Settings which are specific to the format used, might not be needed in some casese
-  formatSpecific:
-    # optional paramenter used for curse to specify a whole project to ignore (mostly if it is client side only)
-    ignoreProject:
-      - 263420
-      - 317780
-      - 232131
-      - 231275
-      - 367706
-      - 261725
-      - 243863
-      - 305373
-      - 325492
-      - 296468
-      - 308240
-      - 362791
-      - 291788
-      - 326950
-      - 237701
-      - 391382
-      - 358191
-      - 271740
-      - 428199
-      - 431430
+  # Settings which are specific to the format used, might not be needed in some cases.
+  # For the curse formats this can hold an ignoreProject list of project IDs to skip, e.g:
+  # formatSpecific:
+  #   ignoreProject:
+  #     - 263420
+  #     - 317780
+  formatSpecific: {}
 
-  # The base path where the server should be installed to, ~ for current path
-  baseInstallPath: setup/
+  # The base path where the server should be installed to. "" or ~ means the current directory.
+  # Use the current directory if the launcher sits in the server root, which is the usual setup.
+  baseInstallPath: ""
 
   # a list of files which are supposed to be ignored when installing it from the client files
   # this can either use regex or glob {default glob: https://docs.oracle.com/javase/8/docs/api/java/nio/file/FileSystem.html#getPathMatcher-java.lang.String-}
   # specify with regex:.... or glob:.... if you want to force a matching type
+  #
+  # Worth adding here: any file the pack ships that you would rather manage yourself, such as
+  # server.properties, so that reinstalling the pack does not overwrite your own settings.
   ignoreFiles:
     - mods/Overrides.txt
     - mods/optifine*.jar
@@ -101,20 +94,14 @@ install:
   # This is a list of files, each ' - ' is a new file:
   # url is the directlink to the file, destination is the path to where the file should be copied to
   additionalFiles: ~
-    #- url: https://media.forgecdn.net/files/2844/278/restrictedportals-1.15-1.0.jar
-    #  destination: mods/restrictedportals-1.15-1.0.jar
-    #- url: https://media.forgecdn.net/files/2874/966/Morpheus-1.15.2-4.2.46.jar
-    #  destination: mods/Morpheus-1.15.2-4.2.46.jar
-    #- url: https://media.forgecdn.net/files/2876/89/spark-forge.jar
+    #- url: https://example.com/files/spark-forge.jar
     #  destination: mods/spark-forge.jar
 
-  # For often there are config which the user wants to change, here is the place to put the local path to configs, jars or whatever
-  # You can copy files or folders
-  localFiles:
-    - from: setup/modpack-download.zip
-      to: setup/test/modpack-download-copied.zip
-    - from: setup/AOF 2/.minecraft
-      to: setup/.
+  # For often there are configs which the user wants to change, here is the place to put the local
+  # path to configs, jars or whatever. You can copy files or folders.
+  localFiles: []
+    #- from: local/server.properties
+    #  to: server.properties
 
   # This makes the program check the folder for whether it is supposed to use the
   checkFolder: true
@@ -144,16 +131,18 @@ launch:
   # Use a RAMDisk for the world folder
   # case-sensitive; use only lowercase `true` or `false`
   # NOTE: The server must have run once fully before switching to `true`!
+  # NOTE: This does NOT create a RAMDisk. It only rsyncs the world to and from ${levelName}_backup
+  #       around launch and shutdown, so a tmpfs has to already be mounted at the world path.
   ramDisk: false
 
-  # checks with the help of a few unrelated server whether the server is online
+  # checks with the help of a few unrelated servers whether the machine is online.
+  # This only logs a warning, it does not stop the install from being attempted.
   checkOffline: true
 
   # These servers are going to be checked:
   checkUrls:
     - https://github.com/
-    - https://www.curseforge.com/
-    - https://cursemeta.dries007.net/
+    - https://maven.minecraftforge.net/
 
   # specifies the max amount of ram the server is supposed to launch with
   maxRam: 5G
@@ -161,7 +150,9 @@ launch:
   # specifies the min amount of ram the server is supposed to launch with
   minRam: 2G
 
-  # specifies whether the server is supposed to auto restart after crash
+  # specifies whether the server is supposed to auto restart after a crash.
+  # Set this to false if something else already supervises the process (a panel, systemd, docker),
+  # so that it sees the real exit code and can apply its own restart policy.
   autoRestart: true
 
   # after a given amount of crashes in a given time the server will stop auto restarting
@@ -182,13 +173,17 @@ launch:
   # For Fabric: "fabric-server-launch.jar"
   startFile: "forge-{{@mcversion@}}-{{@loaderversion@}}.jar"
 
-  # This is the command how the server is supposed to be started
-  # All arguments must be separate entries, including options and their values.
-  # For example, "--fml.modLists pathToModListFile" should be:
+  # This is the command how the server is supposed to be started.
+  #
+  # This is an argument array, not a command line. Every token has to be its own entry, INCLUDING
+  # the value of an option, otherwise the loader receives "--option value" as one unrecognised
+  # argument and refuses to start. So this:
+  #  - "--fml.modLists pathToModListFile"
+  # has to be written as:
   #  - "--fml.modLists"
   #  - "pathToModListFile"
   #
-  # For <1.16 it should be
+  # For <1.17 it should be
   #  - "-jar"
   #  - "{{@startFile@}}"
   #  - "nogui"
@@ -207,9 +202,12 @@ launch:
   forcedJavaPath: ~
 
   # If you aren't sure what the java path is you can let serverstarter attempt to find the correct JVM
-  # For this you need to have all available JVMs on the PATH
+  # For this you need to have all available JVMs on the PATH.
+  # Leave this empty if the machine only has the right JVM installed, or if a container already
+  # pins the Java version, since the probing runs 'java -version' against every match on the PATH.
   # -> MC 1.12 to 1.16 requires java [8, 9, 10, 11]
-  # -> MC 1.17 requires java [17]
+  # -> MC 1.17 to 1.20.4 requires java [17]
+  # -> MC 1.20.5+ requires java [21]
   supportedJavaVersions: [17]
 
   # Java args that are supposed to be used when the server launches
