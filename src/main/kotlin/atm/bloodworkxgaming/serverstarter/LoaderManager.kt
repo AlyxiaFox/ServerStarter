@@ -35,7 +35,14 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
         })
     }
 
-    fun handleServer() {
+    /**
+     * Runs the server (and the auto-restart loop, if enabled).
+     *
+     * @return the exit code of the last server process, so the caller can hand it back to
+     * whatever supervises this jar (Wings, systemd, docker). Without this every crash would
+     * look like a clean shutdown to the supervisor.
+     */
+    fun handleServer(): Int {
         val startTimes = ArrayList<LocalDateTime>()
         val timerString = configFile.launch.crashTimer
         val crashTimer =
@@ -67,14 +74,15 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
             }
 
         var shouldRestart: Boolean
+        var exitCode = 0
         do {
             val now = LocalDateTime.now()
             startTimes.removeIf { start -> start.until(now, ChronoUnit.SECONDS) > crashTimer }
 
-            startServer()
+            exitCode = startServer()
             startTimes.add(now)
 
-            LOGGER.info("Server has been stopped, it has started " + startTimes.size + " times in " + configFile.launch.crashTimer)
+            LOGGER.info("Server has been stopped with exit code $exitCode, it has started " + startTimes.size + " times in " + configFile.launch.crashTimer)
 
 
             shouldRestart = configFile.launch.autoRestart && startTimes.size <= configFile.launch.crashLimit
@@ -88,12 +96,36 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
             }
 
         } while (shouldRestart)
+
+        return exitCode
+    }
+
+    /**
+     * True if the operator accepted the EULA out of band via the environment.
+     *
+     * Needed for unattended containers (Pterodactyl/Wings, docker, CI): there the prompt below
+     * would block on a stdin that never delivers a line and never reaches EOF, hanging install
+     * forever with no way to answer it.
+     */
+    private fun eulaAcceptedViaEnv(): Boolean =
+        sequenceOf("SERVERSTARTER_ACCEPT_EULA", "ACCEPT_EULA", "EULA")
+            .mapNotNull { System.getenv(it) }
+            .any { it.trim().equals("true", ignoreCase = true) }
+
+    private fun isEulaAccepted(lines: List<String>): Boolean = lines.any { line ->
+        val trimmed = line.trim()
+        !trimmed.startsWith("#") && trimmed.replace(" ", "").equals("eula=true", ignoreCase = true)
+    }
+
+    private fun writeAcceptedEula(eulaFile: File, lines: MutableList<String>) {
+        val index = lines.indexOfFirst { !it.trim().startsWith("#") && it.contains("eula", ignoreCase = true) }
+        if (index >= 0) lines[index] = "eula=true" else lines.add("eula=true")
+        FileUtils.writeLines(eulaFile, lines)
     }
 
     private fun checkEULA(basepath: String) {
         try {
             val eulaFile = File(basepath + "eula.txt")
-
 
             val lines: MutableList<String>
             if (eulaFile.exists()) {
@@ -109,23 +141,31 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
                 )
             }
 
+            if (isEulaAccepted(lines)) return
 
-            if (lines.size > 2 && !lines[2].contains("true")) {
-                LOGGER.info(ansi().fgCyan().a("You have not accepted the eula yet."))
-                LOGGER.info(
-                    ansi().fgCyan().a("By typing TRUE you are indicating your agreement to the EULA of Mojang.")
-                )
-                LOGGER.info(
-                    ansi().fgCyan()
-                        .a("Read it at https://account.mojang.com/documents/minecraft_eula before accepting it.")
-                )
+            if (eulaAcceptedViaEnv()) {
+                LOGGER.info("EULA accepted through the environment, writing ${eulaFile.absolutePath}.")
+                writeAcceptedEula(eulaFile, lines)
+                return
+            }
 
-                val answer = readLine()
-                if (answer?.trim().equals("true", ignoreCase = true)) {
-                    LOGGER.info("You have accepted the EULA.")
-                    lines[2] = "eula=true\n"
-                    FileUtils.writeLines(eulaFile, lines)
-                }
+            LOGGER.info(ansi().fgCyan().a("You have not accepted the eula yet."))
+            LOGGER.info(
+                ansi().fgCyan().a("By typing TRUE you are indicating your agreement to the EULA of Mojang.")
+            )
+            LOGGER.info(
+                ansi().fgCyan()
+                    .a("Read it at https://account.mojang.com/documents/minecraft_eula before accepting it.")
+            )
+            LOGGER.info(
+                ansi().fgCyan()
+                    .a("Running unattended? Set the environment variable SERVERSTARTER_ACCEPT_EULA=true instead.")
+            )
+
+            val answer = readLine()
+            if (answer?.trim().equals("true", ignoreCase = true)) {
+                LOGGER.info("You have accepted the EULA.")
+                writeAcceptedEula(eulaFile, lines)
             }
 
         } catch (e: IOException) {
@@ -163,7 +203,10 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
                 .directory(File("$basePath."))
                 .start()
 
-            installer.waitFor()
+            val installerExit = installer.waitFor()
+            if (installerExit != 0) {
+                LOGGER.error("The loader installer exited with code $installerExit, the server will most likely fail to launch.")
+            }
 
             LOGGER.info("Done installing loader, deleting installer!")
 
@@ -202,7 +245,7 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
         return filename
     }
 
-    private fun startServer() {
+    private fun startServer(): Int {
 
         try {
             val levelName = try {
@@ -291,10 +334,12 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
             if (configFile.launch.ramDisk)
                 startAndWaitForProcess(ramPreArguments)
 
-            startAndWaitForProcess(arguments)
+            val exitCode = startAndWaitForProcess(arguments)
 
             if (configFile.launch.ramDisk)
                 startAndWaitForProcess(ramPostArguments)
+
+            return exitCode
 
         } catch (e: IOException) {
             LOGGER.error("Error while starting the server", e)
@@ -302,6 +347,7 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
             LOGGER.error("Error while starting the server", e)
         }
 
+        return 1
     }
 
     /**
@@ -361,18 +407,21 @@ class LoaderManager(private val configFile: ConfigFile, private val internetMana
         .replace("{{@os@}}", if (OSUtil.isWindows) "win" else "unix")
 
 
-    private fun startAndWaitForProcess(args: List<String>) {
-        ProcessBuilder(args).apply {
-            inheritIO()
-            directory(File(configFile.install.baseInstallPath + "."))
-            start().apply {
-                runningProcesses.add(this)
+    private fun startAndWaitForProcess(args: List<String>): Int {
+        val process = ProcessBuilder(args)
+            .inheritIO()
+            .directory(File(configFile.install.baseInstallPath + "."))
+            .start()
 
-                waitFor()
-                outputStream.close()
-                errorStream.close()
-                inputStream.close()
-            }
+        runningProcesses.add(process)
+
+        try {
+            return process.waitFor()
+        } finally {
+            runningProcesses.remove(process)
+            process.outputStream.close()
+            process.errorStream.close()
+            process.inputStream.close()
         }
     }
 }

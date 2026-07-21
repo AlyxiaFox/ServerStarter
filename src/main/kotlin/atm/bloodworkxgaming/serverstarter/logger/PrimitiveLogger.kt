@@ -14,12 +14,27 @@ import java.time.format.DateTimeFormatter
 class PrimitiveLogger(outputFile: File) {
     private val pattern = "\\x1b\\[[0-9;]*m".toRegex()
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
-    private val bufferedSink = outputFile.sink().buffer()
-
-    init {
+    // The truncate has to happen before the sink opens the file. Doing it the other way around
+    // unlinks the file the sink is already holding open, so on Linux no log ever shows up on disk.
+    private val bufferedSink = run {
         if (outputFile.exists()) {
             outputFile.delete()
         }
+        outputFile.sink().buffer()
+    }
+
+    init {
+        // Nothing else flushes this sink, so without the hook the tail of the log (which is the
+        // part you actually want after a crash) is lost when the JVM exits.
+        Runtime.getRuntime().addShutdownHook(Thread {
+            synchronized(this) {
+                try {
+                    bufferedSink.flush()
+                } catch (e: IOException) {
+                    System.err.println("Could not flush the log file: ${e.message}")
+                }
+            }
+        })
     }
 
     @JvmOverloads

@@ -1,13 +1,12 @@
 plugins {
     id 'java'
     id "org.jetbrains.kotlin.jvm" version "1.5.31"
-    id "com.github.johnrengelman.shadow" version "7.0.0"
-    id "com.github.breadmoirai.github-release" version "2.2.12"
-    id "com.github.ben-manes.versions" version "0.39.0"
+    id "com.github.johnrengelman.shadow" version "7.1.2"
 }
 
 group = 'atm.bloodworkxgaming'
-version = '2.3.1'
+// Overridable from CI with -Pversion=x.y.z so the release tag drives the jar name.
+version = project.hasProperty('version') && project.version != 'unspecified' ? project.version : '2.4.0'
 
 sourceCompatibility = 1.8
 
@@ -41,16 +40,20 @@ dependencies {
     implementation  group: 'org.fusesource.jansi', name: 'jansi', version: '2.3.4'
 }
 
-shadowJar {
-    classifier = ""
+// The thin jar gets a classifier so it no longer collides with the shadow jar in build/libs.
+// Upstream had both tasks writing serverstarter-<version>.jar and relied on task ordering.
+jar {
+    archiveClassifier = 'thin'
+    manifest {
+        attributes('Main-Class': 'atm.bloodworkxgaming.serverstarter.ServerStarterKt')
+    }
 }
 
-jar {
+shadowJar {
+    archiveBaseName = 'serverstarter'
+    archiveClassifier = ''
     manifest {
-        attributes(
-                'Class-Path': configurations.runtimeClasspath.collect { it.getName() }.join(' '),
-                'Main-Class': 'atm.bloodworkxgaming.serverstarter.ServerStarterKt'
-        )
+        attributes('Main-Class': 'atm.bloodworkxgaming.serverstarter.ServerStarterKt')
     }
 }
 
@@ -92,31 +95,12 @@ task zipDist (type: Zip) {
     from file("$buildDir/dist/serverstarter-$version/")
     include '*'
     include '*/**'
-    archiveName = "serverstarter-${version}.zip"
-    destinationDir = file("$buildDir/release/")
+    archiveFileName = "serverstarter-${version}.zip"
+    destinationDirectory = file("$buildDir/release/")
 }
 
 
-githubRelease {
-    token = getGithubKey()
-    owner = "BloodWorkXGaming"
-    repo = "ServerStarter"
-
-    releaseAssets file("$buildDir/release/serverstarter-${version}.zip")
-}
-
-tasks.githubRelease.dependsOn zipDist
-
-static String getGithubKey(){
-    if (new File('secrets.properties').exists()) {
-
-        Properties props = new Properties()
-        props.load(new FileInputStream(new File('secrets.properties')))
-        return props['GITHUB_TOKEN']
-    }
-
-    return ""
-}
+// Releases are published by .github/workflows/release.yml, not by Gradle.
 
 task depsize {
     group = "help"

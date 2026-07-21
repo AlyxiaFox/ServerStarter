@@ -25,7 +25,7 @@ class ServerStarter(args: Array<String>) {
         private val rep: Representer = Representer()
         private val options: DumperOptions = DumperOptions()
         private const val CURRENT_SPEC = 2
-        private const val VERSION = "2.3.1"
+        private const val VERSION = "2.4.0"
 
         val LOGGER = PrimitiveLogger(File("serverstarter.log"))
         var lockFile: LockFile
@@ -146,7 +146,10 @@ class ServerStarter(args: Array<String>) {
         }
     }
 
-    fun startLoading() {
+    /**
+     * @return the process exit code to terminate with
+     */
+    fun startLoading(): Int {
 
         val internetManager = InternetManager(config)
 
@@ -191,10 +194,10 @@ class ServerStarter(args: Array<String>) {
 
         if (installOnly) {
             LOGGER.info("Install only mod, exiting now.")
-            exitProcess(0)
+            return 0
         }
 
-        forgeManager.handleServer()
+        return forgeManager.handleServer()
     }
 }
 
@@ -207,7 +210,9 @@ fun main(args: Array<String>) {
                 "Future terminal messages will have no color.")
     }
 
-    try {
+    // The exit code is passed through from the Minecraft process so that a supervisor
+    // (Wings, systemd, docker) can tell a crash apart from a clean shutdown.
+    val exitCode = try {
         val starter = ServerStarter(args)
 
         starter.greet()
@@ -215,11 +220,16 @@ fun main(args: Array<String>) {
 
     } catch (e: InitException) {
         ServerStarter.LOGGER.error(e.message)
+        1
     } catch (e: DownloadLoaderException) {
         ServerStarter.LOGGER.error("Stopping the process as downloading the ModLoader failed", e)
+        1
     } catch (e: Throwable) {
         ServerStarter.LOGGER.error("Some uncaught error happened.", e)
+        1
     }
+
+    exitProcess(exitCode)
 }
 
 class InitException(s: String, e: Exception? = null) : RuntimeException(s, e)

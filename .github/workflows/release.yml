@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the leading v (e.g. 2.4.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gradle 7.6 / Kotlin 1.5 do not support newer JDKs; the jar still targets bytecode 8.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION"
+
+      - name: Build shadow jar
+        run: ./gradlew --no-daemon -Pversion=${{ steps.version.outputs.version }} shadowJar
+
+      - name: Verify the jar is runnable
+        run: |
+          JAR="build/libs/serverstarter-${{ steps.version.outputs.version }}.jar"
+          test -f "$JAR"
+          unzip -p "$JAR" META-INF/MANIFEST.MF | grep -q 'Main-Class: atm.bloodworkxgaming.serverstarter.ServerStarterKt'
+          # No config present, so it must fail on the missing config rather than on a broken jar.
+          java -jar "$JAR" 2>&1 | tee out.log || true
+          grep -q "There is no config file given" out.log
+
+      - name: Stage release assets
+        id: stage
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          cp "build/libs/serverstarter-$VERSION.jar" "dist/serverstarter-$VERSION.jar"
+          # Stable filename so egg install scripts can pin a tag without knowing the version.
+          cp "build/libs/serverstarter-$VERSION.jar" "dist/serverstarter.jar"
+          cd dist && sha256sum *.jar > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v$VERSION"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Automated build of ServerStarter $VERSION.
+
+          Pin \`serverstarter.jar\` from this release in your Pterodactyl/Calagopus egg:
+
+              https://github.com/${{ github.repository }}/releases/download/$TAG/serverstarter.jar
+
+          Verify with \`SHA256SUMS.txt\`."
+          fi
+          gh release upload "$TAG" dist/* --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: serverstarter-${{ steps.version.outputs.version }}
+          path: dist/*
