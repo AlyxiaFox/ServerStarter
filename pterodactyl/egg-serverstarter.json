@@ -1,0 +1,129 @@
+{
+  "_comment": "ServerStarter egg - https://github.com/AlyxiaFox/ServerStarter - jar pinned to release v2.4.0",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-07-21T07:06:04Z",
+  "name": "ServerStarter",
+  "author": "alyxiafox@gmail.com",
+  "description": "Runs a zip-distributed Forge or Fabric modpack through ServerStarter, which installs the pack and the mod loader on first boot and then supervises the Minecraft process. Uses a patched fork (AlyxiaFox/ServerStarter v2.4.0) that propagates the server's exit code so the panel sees real crashes, and that can accept the EULA non-interactively instead of hanging on a stdin prompt. Only the 'zip' modpack format is supported; ServerStarter's CurseForge API path is unmaintained and broken upstream.",
+  "features": [
+    "eula",
+    "java_version",
+    "pid_limit"
+  ],
+  "docker_images": {
+    "Java 17": "ghcr.io/pterodactyl/yolks:java_17",
+    "Java 21": "ghcr.io/pterodactyl/yolks:java_21",
+    "Java 11": "ghcr.io/pterodactyl/yolks:java_11",
+    "Java 8": "ghcr.io/pterodactyl/yolks:java_8"
+  },
+  "file_denylist": [],
+  "startup": "java -Xms16M -Xmx512M -jar serverstarter.jar",
+  "config": {
+    "files": "{\n    \"server.properties\": {\n        \"parser\": \"properties\",\n        \"find\": {\n            \"server-ip\": \"0.0.0.0\",\n            \"server-port\": \"{{server.build.default.port}}\",\n            \"query.port\": \"{{server.build.default.port}}\"\n        }\n    }\n}",
+    "startup": "{\n    \"done\": \")! For help, type \\\"\"\n}",
+    "logs": "{}",
+    "stop": "stop"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\n# ServerStarter egg installer.\n#\n# Runs once, in the installer container, with the server volume mounted at /mnt/server.\n# It only stages files: it downloads the pinned ServerStarter jar, writes\n# server-setup-config.yaml from the egg variables, and seeds eula.txt and\n# server.properties. The modpack and mod loader are installed lazily on first boot,\n# because ServerStarter's checkFolder/lockfile logic is idempotent and the installer\n# image has no JRE to run it with.\n\nset -euo pipefail\n\nSERVERSTARTER_URL=\"https://github.com/AlyxiaFox/ServerStarter/releases/download/v2.4.0/serverstarter.jar\"\nSERVERSTARTER_SHA256=\"afaeef01ca88ee0b7c0484a25c079019ad4438ffbf5ef2177a74b7892d840365\"\n\n# Version-agnostic: it takes the loader version to install as a CLI argument.\nFABRIC_INSTALLER_VERSION=\"1.0.3\"\n\nMC_VERSION=\"${MC_VERSION:-}\"\nLOADER_TYPE=\"${LOADER_TYPE:-forge}\"\nLOADER_VERSION=\"${LOADER_VERSION:-}\"\nMODPACK_URL=\"${MODPACK_URL:-}\"\nMAX_RAM=\"${MAX_RAM:-4G}\"\nMIN_RAM=\"${MIN_RAM:-1G}\"\nAUTO_RESTART=\"${AUTO_RESTART:-false}\"\nJAVA_ARGS=\"${JAVA_ARGS:-}\"\nEULA=\"${EULA:-false}\"\n\n# Wings always mounts the server volume here; the override exists so the script can be\n# exercised outside a Pterodactyl installer container.\nSERVER_DIR=\"${SERVER_DIR:-/mnt/server}\"\n\nfail() { echo \"ERROR: $*\" >&2; exit 1; }\n\necho \"==============================================\"\necho \" ServerStarter egg installer\"\necho \"==============================================\"\n\n[ -n \"$MC_VERSION\" ]     || fail \"MC_VERSION is empty.\"\n[ -n \"$LOADER_VERSION\" ] || fail \"LOADER_VERSION is empty.\"\n[ -n \"$MODPACK_URL\" ]    || fail \"MODPACK_URL is empty. This egg only supports 'zip' modpacks; the CurseForge API path in ServerStarter is unmaintained and broken.\"\n\ncommand -v curl >/dev/null 2>&1 || fail \"curl is not available in the installer image.\"\n\n# YAML booleans must be bare, so anything that is not exactly true becomes false.\ncase \"${AUTO_RESTART,,}\" in\n    true|1|yes) AUTO_RESTART=\"true\" ;;\n    *)          AUTO_RESTART=\"false\" ;;\nesac\ncase \"${EULA,,}\" in\n    true|1|yes) EULA=\"true\" ;;\n    *)          EULA=\"false\" ;;\nesac\n\nmkdir -p \"$SERVER_DIR\"\ncd \"$SERVER_DIR\"\n\necho \"--> Downloading ServerStarter from ${SERVERSTARTER_URL}\"\ncurl -fsSL --retry 3 -o serverstarter.jar \"$SERVERSTARTER_URL\"\necho \"${SERVERSTARTER_SHA256}  serverstarter.jar\" | sha256sum -c - \\\n    || fail \"Checksum mismatch on serverstarter.jar. Refusing to continue.\"\n\n# ---------------------------------------------------------------------------\n# Per-loader launch wiring.\n#\n# startCommand is an argv array. Every token, including an option's value, has to\n# be its own entry, otherwise the loader passes \"--fml.x value\" through as a single\n# unrecognised argument (upstream issue #65 -- not a bug, just an easy mistake).\n# ---------------------------------------------------------------------------\ncase \"${LOADER_TYPE,,}\" in\n    forge)\n        # Forge 1.17+ launches through the generated args file rather than a jar.\n        INSTALLER_URL=\"https://maven.minecraftforge.net/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/forge-{{@mcversion@}}-{{@loaderversion@}}-installer.jar\"\n        INSTALLER_ARGS='    - \"--installServer\"'\n        START_FILE='forge-{{@mcversion@}}-{{@loaderversion@}}.jar'\n        START_COMMAND='    - \"@libraries/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/{{@os@}}_args.txt\"\n    - \"nogui\"'\n        ;;\n    forge-legacy)\n        # Forge 1.16 and older: launch the universal jar directly.\n        INSTALLER_URL=\"https://maven.minecraftforge.net/net/minecraftforge/forge/{{@mcversion@}}-{{@loaderversion@}}/forge-{{@mcversion@}}-{{@loaderversion@}}-installer.jar\"\n        INSTALLER_ARGS='    - \"--installServer\"'\n        START_FILE='forge-{{@mcversion@}}-{{@loaderversion@}}.jar'\n        START_COMMAND='    - \"-jar\"\n    - \"{{@startFile@}}\"\n    - \"nogui\"'\n        ;;\n    fabric)\n        # ServerStarter passes installerArguments through verbatim with no placeholder\n        # substitution, so the versions have to be baked in literally here.\n        INSTALLER_URL=\"https://maven.fabricmc.net/net/fabricmc/fabric-installer/${FABRIC_INSTALLER_VERSION}/fabric-installer-${FABRIC_INSTALLER_VERSION}.jar\"\n        INSTALLER_ARGS=\"    - \\\"server\\\"\n    - \\\"-mcversion\\\"\n    - \\\"${MC_VERSION}\\\"\n    - \\\"-loader\\\"\n    - \\\"${LOADER_VERSION}\\\"\n    - \\\"-downloadMinecraft\\\"\"\n        START_FILE='fabric-server-launch.jar'\n        START_COMMAND='    - \"-jar\"\n    - \"{{@startFile@}}\"\n    - \"nogui\"'\n        ;;\n    *)\n        fail \"Unknown LOADER_TYPE '${LOADER_TYPE}'. Use forge, forge-legacy or fabric.\"\n        ;;\nesac\n\n# Aikar's flags, plus whatever the operator added in JAVA_ARGS.\nJAVA_ARGS_YAML=\"\"\nappend_java_arg() { JAVA_ARGS_YAML=\"${JAVA_ARGS_YAML}    - \\\"$1\\\"\"$'\\n'; }\nfor arg in \\\n    -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 \\\n    -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch \\\n    -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M \\\n    -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 \\\n    -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 \\\n    -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 \\\n    -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 \\\n    -Dfml.readTimeout=90 -Dfml.queryResult=confirm ; do\n    append_java_arg \"$arg\"\ndone\n# Unquoted on purpose: JAVA_ARGS is a freeform, space-separated string.\nfor arg in ${JAVA_ARGS}; do\n    append_java_arg \"$arg\"\ndone\n\necho \"--> Writing server-setup-config.yaml\"\nif [ -f server-setup-config.yaml ]; then\n    cp server-setup-config.yaml server-setup-config.yaml.bak\n    echo \"    (existing config backed up to server-setup-config.yaml.bak)\"\nfi\n\ncat > server-setup-config.yaml <<YAML\n# Generated by the ServerStarter Pterodactyl/Calagopus egg. Reinstalling overwrites this file.\n_specver: 2\n\nmodpack:\n  name: \"ServerStarter modpack\"\n  description: \"Installed by the ServerStarter egg\"\n\ninstall:\n  curseForgeApiKey: \"\"\n  mcVersion: \"${MC_VERSION}\"\n  loaderVersion: \"${LOADER_VERSION}\"\n  installerUrl: \"${INSTALLER_URL}\"\n  installerArguments:\n${INSTALLER_ARGS}\n  modpackUrl: \"${MODPACK_URL}\"\n  # Only 'zip' is supported. ServerStarter's CurseForge API path is unmaintained.\n  modpackFormat: zip\n  formatSpecific: {}\n  # Empty means /home/container, so the world and configs land where the panel,\n  # the SFTP browser and the port rewriter expect them.\n  baseInstallPath: \"\"\n  # Keep the pack archive from clobbering panel-owned files. server.properties is\n  # excluded so the port Wings writes survives the first install.\n  ignoreFiles:\n    - server.properties\n    - eula.txt\n    - serverstarter.jar\n    - server-setup-config.yaml\n  additionalFiles: []\n  localFiles: []\n  checkFolder: true\n  installLoader: true\n  spongeBootstrapper: \"\"\n  connectTimeout: 60\n  readTimeout: 60\n\nlaunch:\n  spongefix: false\n  # rsyncs the world to and from \\${levelName}_backup. It does NOT create a tmpfs;\n  # one has to already be mounted at that path by the node admin.\n  ramDisk: false\n  checkOffline: false\n  checkUrls: []\n  maxRam: \"${MAX_RAM}\"\n  minRam: \"${MIN_RAM}\"\n  # false hands crash supervision to Wings, so the panel sees the real exit code.\n  autoRestart: ${AUTO_RESTART}\n  crashLimit: 5\n  crashTimer: 60min\n  preJavaArgs: \"\"\n  startFile: \"${START_FILE}\"\n  startCommand:\n${START_COMMAND}\n  # Left empty so the JRE baked into the selected Docker image is used.\n  forcedJavaPath: \"\"\n  supportedJavaVersions: []\n  javaArgs:\n${JAVA_ARGS_YAML}\nYAML\n\necho \"--> Seeding eula.txt (EULA=${EULA})\"\n{\n    echo \"#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\"\n    echo \"#$(date -u)\"\n    echo \"eula=${EULA}\"\n} > eula.txt\n\nif [ ! -f server.properties ]; then\n    echo \"--> Seeding server.properties\"\n    {\n        echo \"server-ip=0.0.0.0\"\n        echo \"server-port=25565\"\n        echo \"query.port=25565\"\n        echo \"enable-query=true\"\n    } > server.properties\nfi\n\necho\necho \"==============================================\"\necho \" Install complete.\"\necho \"   loader     : ${LOADER_TYPE} ${LOADER_VERSION} (MC ${MC_VERSION})\"\necho \"   modpack    : ${MODPACK_URL}\"\necho \"   memory     : ${MIN_RAM} - ${MAX_RAM}\"\necho \"   autoRestart: ${AUTO_RESTART}\"\nif [ \"$EULA\" != \"true\" ]; then\n    echo\n    echo \" EULA is not accepted, so Minecraft will refuse to start.\"\n    echo \" Set the EULA variable to true and restart.\"\nfi\necho\necho \" The modpack and mod loader download on first boot, so the first\"\necho \" start takes several minutes and the console will look busy.\"\necho \"==============================================\"\n",
+      "container": "ghcr.io/pterodactyl/installers:debian",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Modpack zip URL",
+      "description": "Direct download URL of the server modpack, as a .zip. Must be a direct link, not a landing page. Changing this reinstalls the pack on the next boot.",
+      "env_variable": "MODPACK_URL",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:1024",
+      "field_type": "text"
+    },
+    {
+      "name": "Minecraft version",
+      "description": "Exact Minecraft version, for example 1.20.1.",
+      "env_variable": "MC_VERSION",
+      "default_value": "1.20.1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:20",
+      "field_type": "text"
+    },
+    {
+      "name": "Loader type",
+      "description": "forge for Minecraft 1.17 and newer, forge-legacy for 1.16 and older, or fabric. This picks how the server is launched, so getting it wrong stops the server from starting.",
+      "env_variable": "LOADER_TYPE",
+      "default_value": "forge",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:forge,forge-legacy,fabric",
+      "field_type": "text"
+    },
+    {
+      "name": "Loader version",
+      "description": "Exact mod loader version. For Forge this is the Forge build, for example 47.4.1. For Fabric this is the Fabric loader version, for example 0.15.11.",
+      "env_variable": "LOADER_VERSION",
+      "default_value": "47.4.1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:32",
+      "field_type": "text"
+    },
+    {
+      "name": "Maximum RAM",
+      "description": "Heap given to the Minecraft process, for example 4G or 4096M. Leave roughly 1G of the server's memory limit free for the launcher and JVM overhead, or the container gets OOM killed.",
+      "env_variable": "MAX_RAM",
+      "default_value": "4G",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|regex:/^[0-9]+[MmGg]$/",
+      "field_type": "text"
+    },
+    {
+      "name": "Minimum RAM",
+      "description": "Initial heap for the Minecraft process, for example 1G.",
+      "env_variable": "MIN_RAM",
+      "default_value": "1G",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|regex:/^[0-9]+[MmGg]$/",
+      "field_type": "text"
+    },
+    {
+      "name": "Auto restart",
+      "description": "false lets Wings own restart-on-crash, so the panel records crashes and its restart policy applies. true makes ServerStarter restart the server itself, which hides crashes from the panel.",
+      "env_variable": "AUTO_RESTART",
+      "default_value": "false",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:true,false",
+      "field_type": "text"
+    },
+    {
+      "name": "Accept Minecraft EULA",
+      "description": "Set to true to accept the Minecraft EULA (https://aka.ms/MinecraftEULA). The server will not start while this is false.",
+      "env_variable": "EULA",
+      "default_value": "false",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:true,false",
+      "field_type": "text"
+    },
+    {
+      "name": "Extra Java arguments",
+      "description": "Optional extra JVM flags for the Minecraft process, space separated. Aikar's flags are already applied. Only takes effect on reinstall.",
+      "env_variable": "JAVA_ARGS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:512",
+      "field_type": "text"
+    }
+  ]
+}
