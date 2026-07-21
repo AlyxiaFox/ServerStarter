@@ -201,6 +201,22 @@ class ServerStarter(args: Array<String>) {
     }
 }
 
+/**
+ * Logs a fatal error without assuming [ServerStarter] initialised successfully.
+ *
+ * A bad server-setup-config.yaml makes the companion initialiser throw, which leaves the class
+ * permanently uninitialised. Touching ServerStarter.LOGGER from a catch block then raises a
+ * NoClassDefFoundError that buries the real error under a second stack trace.
+ */
+private fun logFatal(message: String?, throwable: Throwable?) {
+    try {
+        ServerStarter.LOGGER.error(message, throwable)
+    } catch (t: Throwable) {
+        System.err.println(message)
+        throwable?.printStackTrace()
+    }
+}
+
 fun main(args: Array<String>) {
     // System.setProperty("jansi.passthrough", "true")
     try {
@@ -219,13 +235,13 @@ fun main(args: Array<String>) {
         starter.startLoading()
 
     } catch (e: InitException) {
-        ServerStarter.LOGGER.error(e.message)
+        logFatal(e.message, null)
         1
     } catch (e: DownloadLoaderException) {
-        ServerStarter.LOGGER.error("Stopping the process as downloading the ModLoader failed", e)
+        logFatal("Stopping the process as downloading the ModLoader failed", e)
         1
     } catch (e: Throwable) {
-        ServerStarter.LOGGER.error("Some uncaught error happened.", e)
+        logFatal("Some uncaught error happened.", e)
         1
     }
 
