@@ -10,8 +10,8 @@
 
 set -euo pipefail
 
-SERVERSTARTER_URL="https://github.com/AlyxiaFox/ServerStarter/releases/download/v2.4.0/serverstarter.jar"
-SERVERSTARTER_SHA256="afaeef01ca88ee0b7c0484a25c079019ad4438ffbf5ef2177a74b7892d840365"
+SERVERSTARTER_URL="https://github.com/AlyxiaFox/ServerStarter/releases/download/v2.4.1/serverstarter.jar"
+SERVERSTARTER_SHA256="1c518e108875787a06844ee37e17f908d469cda58864490eaaf9c42a3ca19753"
 
 # Version-agnostic: it takes the loader version to install as a CLI argument.
 FABRIC_INSTALLER_VERSION="1.0.3"

@@ -39,12 +39,12 @@ function New-Var {
 }
 
 $egg = [ordered]@{
-    "_comment"    = "ServerStarter egg - https://github.com/AlyxiaFox/ServerStarter - jar pinned to release v2.4.0"
+    "_comment"    = "ServerStarter egg - https://github.com/AlyxiaFox/ServerStarter - jar pinned to release v2.4.1"
     meta          = [ordered]@{ version = "PTDL_v2"; update_url = $null }
     exported_at   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     name          = "ServerStarter"
     author        = "alyxiafox@gmail.com"
-    description   = "Runs a zip-distributed Forge or Fabric modpack through ServerStarter, which installs the pack and the mod loader on first boot and then supervises the Minecraft process. Uses a patched fork (AlyxiaFox/ServerStarter v2.4.0) that propagates the server's exit code so the panel sees real crashes, and that can accept the EULA non-interactively instead of hanging on a stdin prompt. Only the 'zip' modpack format is supported; ServerStarter's CurseForge API path is unmaintained and broken upstream."
+    description   = "Runs a zip-distributed Forge or Fabric modpack through ServerStarter, which installs the pack and the mod loader on first boot and then supervises the Minecraft process. Uses a patched fork (AlyxiaFox/ServerStarter v2.4.1) that propagates the server's exit code so the panel sees real crashes, and that can accept the EULA non-interactively instead of hanging on a stdin prompt. Only the 'zip' modpack format is supported; ServerStarter's CurseForge API path is unmaintained and broken upstream."
     features      = @("eula", "java_version", "pid_limit")
     docker_images = [ordered]@{
         "Java 17" = "ghcr.io/pterodactyl/yolks:java_17"

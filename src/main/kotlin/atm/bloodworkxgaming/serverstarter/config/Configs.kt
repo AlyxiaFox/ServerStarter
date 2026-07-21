@@ -1,7 +1,29 @@
 package atm.bloodworkxgaming.serverstarter.config
 
+import atm.bloodworkxgaming.serverstarter.ServerStarter
 import java.util.*
 
+/**
+ * Logs without assuming [ServerStarter] finished initialising, since this runs while its
+ * companion object is still being constructed.
+ */
+private fun warn(message: String) {
+    try {
+        ServerStarter.LOGGER.warn(message)
+    } catch (t: Throwable) {
+        System.err.println("[WARNING] $message")
+    }
+}
+
+/**
+ * Replaces `${ENV_VAR}` references with the matching environment variable.
+ *
+ * An unset variable resolves to an empty string instead of aborting. This runs against
+ * curseForgeApiKey during config load for every pack format, so throwing here meant a zip pack
+ * that never touches CurseForge still refused to start whenever the shipped
+ * `${CURSE_FORGE_API_KEY}` default was left in place, and it surfaced as an unexplained
+ * "Failed to load Yaml" with the real cause buried in the stack trace.
+ */
 fun processString(s: String): String {
         var str = s
         val regex = Regex("\\\$\\{(.+)}")
@@ -9,7 +31,12 @@ fun processString(s: String): String {
             val res = matchResult.groupValues.getOrNull(0) ?: continue
             val inner = matchResult.groupValues.getOrNull(1) ?: continue
 
-            str = str.replace(res, System.getenv(inner) ?: throw java.lang.Exception("There is no Environment Variable '$inner'"))
+            val value = System.getenv(inner)
+            if (value == null) {
+                warn("The environment variable '$inner' is not set, substituting an empty string.")
+            }
+
+            str = str.replace(res, value ?: "")
         }
 
         return str

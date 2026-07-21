@@ -1,7 +1,7 @@
 > **This is a fork of [BloodyMods/ServerStarter](https://github.com/BloodyMods/ServerStarter)**, which has been
 > unmaintained since July 2022. It is patched to run as a supervised container process so it can back a
 > Pterodactyl/Calagopus egg. See [`pterodactyl/`](pterodactyl/) for the egg, and the
-> [v2.4.0 release notes](https://github.com/AlyxiaFox/ServerStarter/releases/tag/v2.4.0) for what changed.
+> [v2.4.1 release notes](https://github.com/AlyxiaFox/ServerStarter/releases/tag/v2.4.1) for what changed.
 >
 > The CurseForge (`curse` / `curseid`) modpack formats are broken upstream and are not fixed here. Use
 > `modpackFormat: zip`.

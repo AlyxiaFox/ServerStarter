@@ -12,7 +12,7 @@ Import `egg-serverstarter.json` through **Admin → Nests → Import Egg**.
 The installer container only stages files, which keeps installs fast and reproducible:
 
 1. Downloads `serverstarter.jar` pinned to release
-   [v2.4.0](https://github.com/AlyxiaFox/ServerStarter/releases/tag/v2.4.0) and verifies its SHA-256.
+   [v2.4.1](https://github.com/AlyxiaFox/ServerStarter/releases/tag/v2.4.1) and verifies its SHA-256.
 2. Writes `server-setup-config.yaml` from the egg variables.
 3. Seeds `eula.txt` and a minimal `server.properties`.
 
