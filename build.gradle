@@ -1,3 +1,5 @@
+import org.apache.tools.ant.filters.FixCrLfFilter
+
 plugins {
     id 'java'
     id "org.jetbrains.kotlin.jvm" version "1.5.31"
@@ -85,7 +87,15 @@ task packageDist(type: Copy) {
 
     into file("$buildDir/dist/serverstarter-$version/")
 
+    filteringCharset = 'UTF-8'
     filter { it.replaceAll("@@serverstarter-libVersion@@", version as String) }
+
+    // The filter above rewrites every line with the platform separator, so a dist packaged on
+    // Windows shipped a CRLF startserver.sh that Linux refuses to execute. The .bat is left alone,
+    // since Windows wants CRLF there.
+    filesMatching('**/*.sh') {
+        filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance('lf'))
+    }
 }
 
 task zipDist (type: Zip) {
