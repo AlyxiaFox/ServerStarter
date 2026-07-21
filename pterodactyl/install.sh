@@ -85,6 +85,19 @@ case "${LOADER_TYPE,,}" in
     - "{{@startFile@}}"
     - "nogui"'
         ;;
+    neoforge)
+        # NeoForge, for Minecraft 1.20.2 and newer.
+        #
+        # Unlike Forge, the artifact path carries only the loader version, never the Minecraft
+        # version, and the loader version itself encodes the target: 21.1.x is Minecraft 1.21.1,
+        # 26.1.2.x is Minecraft 26.1.2. So LOADER_VERSION alone decides what gets installed, and
+        # MC_VERSION only has to agree with it.
+        INSTALLER_URL="https://maven.neoforged.net/releases/net/neoforged/neoforge/{{@loaderversion@}}/neoforge-{{@loaderversion@}}-installer.jar"
+        INSTALLER_ARGS='    - "--installServer"'
+        START_FILE='neoforge-{{@loaderversion@}}.jar'
+        START_COMMAND='    - "@libraries/net/neoforged/neoforge/{{@loaderversion@}}/{{@os@}}_args.txt"
+    - "nogui"'
+        ;;
     fabric)
         # ServerStarter passes installerArguments through verbatim with no placeholder
         # substitution, so the versions have to be baked in literally here.
@@ -101,7 +114,7 @@ case "${LOADER_TYPE,,}" in
     - "nogui"'
         ;;
     *)
-        fail "Unknown LOADER_TYPE '${LOADER_TYPE}'. Use forge, forge-legacy or fabric."
+        fail "Unknown LOADER_TYPE '${LOADER_TYPE}'. Use forge, neoforge, forge-legacy or fabric."
         ;;
 esac
 

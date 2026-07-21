@@ -104,7 +104,8 @@ anything newer.
 | --- | --- |
 | 1.12 – 1.16 | 8 to 11 |
 | 1.17 – 1.20.4 | 17 |
-| 1.20.5 and newer | 21 |
+| 1.20.5 – 1.21.x | 21 |
+| 26.1 and newer | 25 |
 
 If several JVMs are on the `PATH`, `supportedJavaVersions` lets the launcher pick a matching one, and
 `forcedJavaPath` pins an exact binary. Leave both empty when the machine or container already has the right JVM.

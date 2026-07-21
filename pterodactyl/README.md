@@ -1,6 +1,6 @@
 # ServerStarter egg for Pterodactyl / Calagopus
 
-Runs a zip-distributed Forge or Fabric modpack. `serverstarter.jar` is the container's main
+Runs a zip-distributed Forge, NeoForge or Fabric modpack. `serverstarter.jar` is the container's main
 process: it installs the modpack and the mod loader on first boot, then launches and supervises
 the Minecraft server. Because ServerStarter uses `inheritIO()`, the panel console, the `stop`
 command and the startup detection all talk to the real Minecraft process with nothing in between.
@@ -26,8 +26,8 @@ Expect the first start to take several minutes with a busy-looking console.
 | --- | --- | --- |
 | `MODPACK_URL` | — | Direct link to the server pack `.zip`. Changing it reinstalls the pack. |
 | `MC_VERSION` | `1.20.1` | Exact Minecraft version. |
-| `LOADER_TYPE` | `forge` | `forge` (MC 1.17+), `forge-legacy` (MC 1.16 and older), or `fabric`. |
-| `LOADER_VERSION` | `47.4.1` | Forge build, or Fabric loader version. |
+| `LOADER_TYPE` | `forge` | `forge` (MC 1.17+), `neoforge` (MC 1.20.2+), `forge-legacy` (MC 1.16 and older), or `fabric`. |
+| `LOADER_VERSION` | `47.4.1` | Forge build, NeoForge version, or Fabric loader version. |
 | `MAX_RAM` | `4G` | Heap for the Minecraft process. |
 | `MIN_RAM` | `1G` | Initial heap. |
 | `AUTO_RESTART` | `false` | See below. |
@@ -35,8 +35,13 @@ Expect the first start to take several minutes with a busy-looking console.
 | `JAVA_ARGS` | — | Extra JVM flags, on top of Aikar's. |
 
 `LOADER_TYPE` exists because the launch command differs fundamentally between loader generations:
-Forge 1.17+ boots through a generated `unix_args.txt`, while older Forge and Fabric launch a jar
-directly. Picking the wrong one stops the server from starting.
+Forge 1.17+ and NeoForge boot through a generated `unix_args.txt`, while older Forge and Fabric launch
+a jar directly. Picking the wrong one stops the server from starting.
+
+NeoForge is the odd one for `LOADER_VERSION`. Its download path carries only the loader version and
+never the Minecraft version, and the version itself encodes the target: `21.1.242` is Minecraft 1.21.1,
+`26.1.2.84` is Minecraft 26.1.2. So `LOADER_VERSION` decides what actually gets installed and
+`MC_VERSION` only has to agree with it.
 
 ## Design decisions
 
@@ -68,8 +73,16 @@ delivers a line and never reaches EOF.
 - **`ramDisk` is left off and should stay off** unless a tmpfs is already mounted at the world path
   by the node admin. ServerStarter does not create one; it only rsyncs the world to and from
   `<levelName>_backup`, so enabling it without the mount just adds a pointless copy.
-- Choose the Docker image to match the loader: Java 17 for Minecraft 1.17–1.20.4, Java 21 for 1.20.5+,
-  Java 8 for 1.12 era packs.
+- **Pick the Docker image to match Minecraft, not the loader.** The launcher runs on anything; the
+  server does not. Getting this wrong is the most common reason a correctly configured server refuses
+  to boot.
+
+  | Minecraft | Image |
+  | --- | --- |
+  | 1.12 era | Java 8 |
+  | 1.17 – 1.20.4 | Java 17 |
+  | 1.20.5 – 1.21.x | Java 21 |
+  | 26.1 and newer | Java 25 |
 
 ## Editing the egg
 
